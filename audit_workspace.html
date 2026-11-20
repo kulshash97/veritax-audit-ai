@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VeriTax AI — Audit & Reconciliation Workspace</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: Inter, system-ui, -apple-system, sans-serif; }
+    body { background: #0b1020; color: #e5e7eb; padding: 24px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; background: #121a33; border: 1px solid #243158; padding: 16px 20px; border-radius: 12px; margin-bottom: 20px; }
+    .brand h1 { font-size: 18px; color: #ffffff; }
+    .brand p { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    select { background: #0b1020; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+    button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-weight: 600; }
+    .btn-primary { background: #10b981; color: #06281e; }
+    .btn-primary:hover { background: #34d399; }
+    .btn-secondary { background: #1e293b; color: #f8fafc; border: 1px solid #334155; }
+    .btn-approve { background: #059669; color: #fff; }
+    .btn-override { background: #d97706; color: #fff; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .card { background: #121a33; border: 1px solid #243158; border-radius: 12px; padding: 16px; }
+    .card .label { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
+    .card .value { font-size: 24px; font-weight: 700; color: #ffffff; margin-top: 6px; }
+    .card .sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+    .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1e293b; }
+    th { color: #94a3b8; font-size: 11px; text-transform: uppercase; }
+    tr.selected { background: #1b284b; }
+    tr:hover { background: #16213e; cursor: pointer; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .CRITICAL { background: #7f1d1d; color: #fecaca; }
+    .HIGH { background: #78350f; color: #fde68a; }
+    .SIGNED_OFF { background: #064e3b; color: #a7f3d0; }
+    .OVERRIDDEN { background: #78350f; color: #fcd34d; }
+    .PENDING_CA_REVIEW { background: #1e293b; color: #cbd5e1; }
+    .detail-box p { font-size: 13px; line-height: 1.5; margin-top: 8px; color: #dbeafe; }
+    .detail-box .meta { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    textarea { width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0b1020; color: #f8fafc; font-size: 13px; }
+    .status-bar { font-size: 12px; color: #34d399; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <h1>VeriTax Audit AI — Live Backend Workspace</h1>
+        <p id="entitySubtitle">Entity: Deccan Precision Components Pvt Ltd • GSTIN: 36AAACD1234F1Z5 • FY 2025-26</p>
+      </div>
+      <div class="actions">
+        <select id="profileSelect" aria-label="Select Client or Dealer Profile">
+          <option value="deccan">Client: Deccan Precision Components (36AAACD1234F1Z5)</option>
+          <option value="charminar">Dealer: Charminar Mobility & Spares (36AABCC6620K1Z8)</option>
+        </select>
+        <button id="runLiveAuditBtn" class="btn-primary">Run Live AI Audit Pass</button>
+        <button id="exportCsvBtn" class="btn-secondary">Export Workpaper CSV</button>
+      </div>
+    </div>
+
+    <div id="statusBanner" class="status-bar">Select a client or dealer profile and click "Run Live AI Audit Pass".</div>
+
+    <div class="kpis">
+      <div class="card">
+        <div class="label">Rows Scanned</div>
+        <div id="kpiRows" class="value">0</div>
+        <div class="sub">Purchase Register vs GSTR-2B</div>
+      </div>
+      <div class="card">
+        <div class="label">Anomalies Flagged</div>
+        <div id="kpiFlags" class="value">0</div>
+        <div class="sub">Deterministic Rule Engine</div>
+      </div>
+      <div class="card">
+        <div class="label">Total Exposure</div>
+        <div id="kpiExposure" class="value">₹0</div>
+        <div class="sub">ITC & MSME Disallowance Risk</div>
+      </div>
+      <div class="card">
+        <div class="label">Reviewed Items</div>
+        <div id="kpiReviewed" class="value">0 / 0</div>
+        <div class="sub">Signed Off or Overridden</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2 style="font-size: 15px; margin-bottom: 10px;">Flagged Audit Exceptions</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Vendor / Invoice</th>
+              <th>Exposure</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="findingsBody">
+            <tr><td colspan="4" style="color:#94a3b8;">No findings loaded yet. Click "Run Live AI Audit Pass".</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card detail-box">
+        <h2 style="font-size: 15px; margin-bottom: 6px;">Evidence & Statutory Citation Inspector</h2>
+        <div id="inspectorContent">
+          <p style="color:#94a3b8;">Select any finding row after running a live audit pass to inspect proofs, statutory sections, and sign off.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = "https://YOUR-RENDER-BACKEND.onrender.com";
+    let findings = [];
+    let selectedId = null;
+    let summary = { total_rows_scanned: 0, anomalies_flagged: 0, total_exposure_inr: 0 };
+    let activeEntity = { entity_name: "Deccan Precision Components Pvt Ltd", gstin: "36AAACD1234F1Z5", fy: "FY 2025-26" };
+
+    function formatINR(num) {
+      return "₹" + Number(num || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+    }
+
+    function updateEntityHeader() {
+      document.getElementById("entitySubtitle").textContent =
+        `Entity: ${activeEntity.entity_name} • GSTIN: ${activeEntity.gstin} • ${activeEntity.fy}`;
+    }
+
+    function updateKPIs() {
+      document.getElementById("kpiRows").textContent = summary.total_rows_scanned ?? 0;
+      document.getElementById("kpiFlags").textContent = summary.anomalies_flagged ?? findings.length;
+      document.getElementById("kpiExposure").textContent = formatINR(summary.total_exposure_inr);
+      const reviewedCount = findings.filter(f => f.status !== "PENDING_CA_REVIEW").length;
+      document.getElementById("kpiReviewed").textContent = `${reviewedCount} / ${findings.length}`;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("findingsBody");
+      if (!findings.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#94a3b8;">No findings available.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = findings.map(f => `
+        <tr class="${f.finding_id === selectedId ? "selected" : ""}" onclick="selectFinding('${f.finding_id}')">
+          <td><strong>${f.finding_id}</strong><br/><span class="badge ${f.severity}">${f.severity}</span></td>
+          <td>${f.vendor_name}<br/><span style="color:#94a3b8;font-size:12px;">${f.invoice_no} (${f.invoice_date})</span></td>
+          <td><strong>${formatINR(f.exposure_inr)}</strong></td>
+          <td><span class="badge ${f.status}">${f.status}</span></td>
+        </tr>
+      `).join("");
+    }
+
+    function selectFinding(id) {
+      selectedId = id;
+      renderTable();
+      const f = findings.find(item => item.finding_id === id);
+      const box = document.getElementById("inspectorContent");
+      if (!f) return;
+
+      box.innerHTML = `
+        <div class="meta">${f.finding_id} • ${f.category} • GSTIN: ${f.vendor_gstin}</div>
+        <p><strong>Vendor & Invoice:</strong> ${f.vendor_name} (${f.invoice_no}, ${f.invoice_date})</p>
+        <p><strong>Exposure Amount:</strong> ${formatINR(f.exposure_inr)}</p>
+        <p><strong>Deterministic Proof:</strong> ${f.deterministic_proof}</p>
+        <p><strong>Statutory Citation:</strong> ${f.statutory_citation}</p>
+        <p><strong>Audit Memo Note:</strong> ${f.audit_memo_note}</p>
+        <p><strong>Recommended Action:</strong> ${f.recommended_action}</p>
+        <textarea id="reviewerNoteInput" rows="2" placeholder="Enter CA / reviewer sign-off or override note...">${f.reviewer_note || ""}</textarea>
+        <div class="actions" style="margin-top: 10px;">
+          <button class="btn-approve" onclick="updateFindingStatus('${f.finding_id}', 'SIGNED_OFF')">Sign Off Finding</button>
+          <button class="btn-override" onclick="updateFindingStatus('${f.finding_id}', 'OVERRIDDEN')">Override with Note</button>
+        </div>
+      `;
+    }
+
+    function updateFindingStatus(id, newStatus) {
+      const noteEl = document.getElementById("reviewerNoteInput");
+      const noteText = noteEl ? noteEl.value.trim() : "";
+      if (newStatus === "OVERRIDDEN" && !noteText) {
+        alert("Please enter a reviewer note before overriding a finding.");
+        return;
+      }
+      findings = findings.map(f => f.finding_id === id ? { ...f, status: newStatus, reviewer_note: noteText } : f);
+      updateKPIs();
+      selectFinding(id);
+    }
+
+    async function runLiveAuditPass() {
+      const btn = document.getElementById("runLiveAuditBtn");
+      const banner = document.getElementById("statusBanner");
+      const profile = document.getElementById("profileSelect").value;
+      btn.disabled = true;
+      btn.textContent = "Running Live Engine...";
+      banner.textContent = `Calling ${API_BASE_URL}/api/v1/audit/demo?profile=${encodeURIComponent(profile)} ...`;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/audit/demo?profile=${encodeURIComponent(profile)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        activeEntity = data.entity_profile || activeEntity;
+        summary = data.audit_summary || {};
+        findings = (data.findings || []).map(item => ({ ...item, reviewer_note: item.reviewer_note || "" }));
+        updateEntityHeader();
+        updateKPIs();
+        renderTable();
+        if (findings.length > 0) selectFinding(findings[0].finding_id);
+        banner.textContent = `Loaded ${findings.length} findings for ${activeEntity.entity_name} (Exposure: ${formatINR(summary.total_exposure_inr)}).`;
+      } catch (err) {
+        banner.textContent = `Connection error: ${err.message}. Check that Uvicorn is running on port 8000 and this page is open at http://127.0.0.1:5500/audit_workspace.html.`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Run Live AI Audit Pass";
+      }
+    }
+
+    function exportCSV() {
+      if (!findings.length) {
+        alert("Run a live audit pass first so there are findings to export.");
+        return;
+      }
+      const headers = [
+        "entity_name", "entity_gstin", "finding_id", "severity", "category",
+        "vendor_name", "vendor_gstin", "invoice_no", "invoice_date", "exposure_inr",
+        "statutory_citation", "recommended_action", "status", "reviewer_note"
+      ];
+      const rows = findings.map(f => {
+        const enriched = {
+          ...f,
+          entity_name: activeEntity.entity_name,
+          entity_gstin: activeEntity.gstin
+        };
+        return headers.map(h => `"${String(enriched[h] ?? "").replace(/"/g, '""')}"`).join(",");
+      });
+      const csv = [headers.join(","), ...rows].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `VeriTax_Workpaper_${activeEntity.gstin}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("profileSelect").addEventListener("change", runLiveAuditPass);
+    document.getElementById("runLiveAuditBtn").addEventListener("click", runLiveAuditPass);
+    document.getElementById("exportCsvBtn").addEventListener("click", exportCSV);
+    updateEntityHeader();
+  </script>
+</body>
+</html>
+
