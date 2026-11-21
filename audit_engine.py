@@ -188,9 +188,9 @@ def run_deterministic_checks(
 
         is_msme = str(row.get("is_msme_udyam", "false")).lower() in ["true", "1", "yes"]
         if is_msme:
-            inv_dt = pd.to_datetime(row["invoice_date"])
+            inv_dt = pd.to_datetime(row["invoice_date"], format="mixed", dayfirst=True, errors="coerce")
             pay_val = row.get("payment_date")
-            pay_dt = pd.to_datetime(pay_val) if pd.notna(pay_val) and str(pay_val).strip() != "" else cutoff_dt
+            pay_dt = pd.to_datetime(pay_val, format="mixed", dayfirst=True, errors="coerce") if pd.notna(pay_val) and str(pay_val).strip() != "" else cutoff_dt
             days_elapsed = int((pay_dt - inv_dt).days)
 
             if days_elapsed > 45:
@@ -281,3 +281,4 @@ def enrich_with_gemini_citations(raw_anomalies: List[dict]) -> List[AuditFinding
         )
 
     return enriched_findings
+

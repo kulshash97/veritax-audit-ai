@@ -175,7 +175,7 @@ def validate_and_normalize_frames(pr_df: pd.DataFrame, g2b_df: pd.DataFrame) -> 
     if "payment_date" not in pr_df.columns:
         pr_df["payment_date"] = ""
 
-    parsed_dates = pd.to_datetime(pr_df["invoice_date"], errors="coerce")
+    parsed_dates = pd.to_datetime(pr_df["invoice_date"], format="mixed", dayfirst=True, errors="coerce")
     if parsed_dates.isna().any():
         bad_rows = parsed_dates[parsed_dates.isna()].index.tolist()
         raise ValueError(f"Purchase Register has invalid invoice_date values at row(s): {bad_rows}")
@@ -266,3 +266,4 @@ def run_demo_audit(profile: str = "deccan"):
     except Exception as exc:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Demo audit error: {type(exc).__name__}: {exc}")
+
