@@ -162,6 +162,15 @@
   </div>
 
   <script>
+        async function fetchWithTimeout(url, options = {}, timeoutMs = 60000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
     const API_BASE_URL = "https://veritax-audit-workspacenew.onrender.com";
     let findings = [];
     let selectedId = null;
@@ -384,3 +393,4 @@
   </script>
 </body>
 </html>
+
