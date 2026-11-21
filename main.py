@@ -1,22 +1,32 @@
 import io
-import traceback
-from typing import List, Literal, Tuple
+from typing import Tuple
 import pandas as pd
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from audit_engine import run_deterministic_checks, enrich_with_gemini_citations
 
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB per uploaded file
+
+ALLOWED_ORIGINS = [
+    "https://veritax-audit-workspace.onrender.com",
+    "https://veritax-audit-workspacenew.onrender.com",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+]
+
 app = FastAPI(
     title="VeriTax AI Auditor Engine",
     description="Deterministic Indian GST & Statutory Audit Backend powered by Google Gemini",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -130,9 +140,19 @@ REQUIRED_PR_COLS = ["invoice_no", "invoice_date", "vendor_name", "vendor_gstin",
 REQUIRED_2B_COLS = ["invoice_no", "vendor_gstin", "itc_available_2b"]
 
 
+def read_bounded_upload(upload: UploadFile, label: str) -> bytes:
+    content = upload.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{label} exceeds the 5 MB prototype upload limit."
+        )
+    return content
+
+
 def parse_tabular_upload(filename: str, raw_bytes: bytes, label: str) -> pd.DataFrame:
     if not raw_bytes:
-        raise ValueError(f"{label} file '{filename}' is empty.")
+        raise ValueError(f"{label} file is empty.")
 
     lower_name = (filename or "").lower()
     if lower_name.endswith(".csv"):
@@ -141,10 +161,10 @@ def parse_tabular_upload(filename: str, raw_bytes: bytes, label: str) -> pd.Data
         xls = pd.ExcelFile(io.BytesIO(raw_bytes))
         df = pd.read_excel(xls, sheet_name=0)
     else:
-        raise ValueError(f"{label} file '{filename}' must be a .csv, .xlsx, or .xls file.")
+        raise ValueError(f"{label} file must be a .csv, .xlsx, or .xls file.")
 
     if df.empty:
-        raise ValueError(f"{label} file '{filename}' contains zero data rows.")
+        raise ValueError(f"{label} file contains zero data rows.")
 
     df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
     return df
@@ -190,7 +210,12 @@ def validate_and_normalize_frames(pr_df: pd.DataFrame, g2b_df: pd.DataFrame) -> 
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "engine": "VeriTax Deterministic + Gemini 3.8 Flash", "version": "1.2.0"}
+    return {
+        "status": "online",
+        "engine": "VeriTax Deterministic + Gemini 3.8 Flash",
+        "version": "1.3.0",
+        "security_hygiene": "strict_cors_and_5mb_upload_cap"
+    }
 
 
 @app.post("/api/v1/audit/run")
@@ -202,8 +227,8 @@ async def execute_audit(
     gstin: str = Form("N/A")
 ):
     try:
-        pr_bytes = await purchase_register.read()
-        g2b_bytes = await gstr_2b.read()
+        pr_bytes = read_bounded_upload(purchase_register, "Purchase Register")
+        g2b_bytes = read_bounded_upload(gstr_2b, "GSTR-2B")
 
         raw_pr = parse_tabular_upload(purchase_register.filename or "purchase_register.csv", pr_bytes, "Purchase Register")
         raw_2b = parse_tabular_upload(gstr_2b.filename or "gstr_2b.csv", g2b_bytes, "GSTR-2B")
@@ -217,8 +242,8 @@ async def execute_audit(
         return {
             "entity_profile": {
                 "profile_key": "custom_upload",
-                "entity_name": entity_name.strip() or "Uploaded Entity Ledger",
-                "gstin": gstin.strip().upper() or "N/A",
+                "entity_name": (entity_name or "").strip()[:120] or "Uploaded Entity Ledger",
+                "gstin": (gstin or "").strip().upper()[:15] or "N/A",
                 "fy": "Custom Upload"
             },
             "audit_summary": {
@@ -230,11 +255,12 @@ async def execute_audit(
             "findings": [f.model_dump() for f in final_findings]
         }
 
+    except HTTPException:
+        raise
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=400, detail=f"Audit pipeline failed: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Unable to process uploaded audit files.")
 
 
 @app.get("/api/v1/audit/demo")
@@ -263,7 +289,5 @@ def run_demo_audit(profile: str = "deccan"):
             },
             "findings": [f.model_dump() for f in final_findings]
         }
-    except Exception as exc:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Demo audit error: {type(exc).__name__}: {exc}")
-
+    except Exception:
+        raise HTTPException(status_code=500, detail="Demo audit engine temporarily unavailable.")
