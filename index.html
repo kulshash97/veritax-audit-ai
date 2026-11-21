@@ -7,24 +7,30 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: Inter, system-ui, -apple-system, sans-serif; }
     body { background: #0b1020; color: #e5e7eb; padding: 24px; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    .topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; background: #121a33; border: 1px solid #243158; padding: 16px 20px; border-radius: 12px; margin-bottom: 20px; }
+    .container { max-width: 1240px; margin: 0 auto; }
+    .topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; background: #121a33; border: 1px solid #243158; padding: 16px 20px; border-radius: 12px; margin-bottom: 16px; }
     .brand h1 { font-size: 18px; color: #ffffff; }
     .brand p { font-size: 12px; color: #9ca3af; margin-top: 2px; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    select { background: #0b1020; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+    select, input[type="date"], input[type="text"], input[type="file"] {
+      background: #0b1020; color: #f8fafc; border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; font-size: 12px;
+    }
     button { cursor: pointer; border: none; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-weight: 600; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
     .btn-primary { background: #10b981; color: #06281e; }
-    .btn-primary:hover { background: #34d399; }
+    .btn-primary:hover:not(:disabled) { background: #34d399; }
     .btn-secondary { background: #1e293b; color: #f8fafc; border: 1px solid #334155; }
     .btn-approve { background: #059669; color: #fff; }
     .btn-override { background: #d97706; color: #fff; }
-    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .upload-panel { background: #121a33; border: 1px solid #243158; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-items: end; }
+    .field label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .field input { width: 100%; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 18px; }
     .card { background: #121a33; border: 1px solid #243158; border-radius: 12px; padding: 16px; }
     .card .label { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.05em; }
     .card .value { font-size: 24px; font-weight: 700; color: #ffffff; margin-top: 6px; }
     .card .sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
-    .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; }
+    .grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; margin-bottom: 18px; }
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #1e293b; }
@@ -34,6 +40,7 @@
     .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
     .CRITICAL { background: #7f1d1d; color: #fecaca; }
     .HIGH { background: #78350f; color: #fde68a; }
+    .MEDIUM { background: #1e3a8a; color: #bfdbfe; }
     .SIGNED_OFF { background: #064e3b; color: #a7f3d0; }
     .OVERRIDDEN { background: #78350f; color: #fcd34d; }
     .PENDING_CA_REVIEW { background: #1e293b; color: #cbd5e1; }
@@ -41,13 +48,14 @@
     .detail-box .meta { font-size: 12px; color: #94a3b8; margin-top: 4px; }
     textarea { width: 100%; margin-top: 10px; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0b1020; color: #f8fafc; font-size: 13px; }
     .status-bar { font-size: 12px; color: #34d399; margin-bottom: 12px; }
+    .error-text { color: #fca5a5; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="topbar">
       <div class="brand">
-        <h1>VeriTax Audit AI — Live Backend Workspace</h1>
+        <h1>VeriTax Audit AI — Statutory & Reconciliation Workspace</h1>
         <p id="entitySubtitle">Entity: Deccan Precision Components Pvt Ltd • GSTIN: 36AAACD1234F1Z5 • FY 2025-26</p>
       </div>
       <div class="actions">
@@ -60,7 +68,29 @@
       </div>
     </div>
 
-    <div id="statusBanner" class="status-bar">Select a client or dealer profile and click "Run Live AI Audit Pass".</div>
+    <div class="upload-panel">
+      <div class="field">
+        <label for="prFileInput">Purchase Register (CSV / XLSX)</label>
+        <input id="prFileInput" type="file" accept=".csv,.xlsx,.xls" />
+      </div>
+      <div class="field">
+        <label for="gstr2bFileInput">GSTR-2B Register (CSV / XLSX)</label>
+        <input id="gstr2bFileInput" type="file" accept=".csv,.xlsx,.xls" />
+      </div>
+      <div class="field">
+        <label for="cutoffDateInput">Audit Cutoff Date</label>
+        <input id="cutoffDateInput" type="date" value="2026-03-31" />
+      </div>
+      <div class="field">
+        <label for="customEntityInput">Entity Label (Optional)</label>
+        <input id="customEntityInput" type="text" placeholder="e.g., Telangana Traders Pvt Ltd" />
+      </div>
+      <div class="field">
+        <button id="runUploadAuditBtn" class="btn-secondary" style="width:100%;">Run Uploaded Files Audit</button>
+      </div>
+    </div>
+
+    <div id="statusBanner" class="status-bar">Ready. Run a profile audit pass or upload Purchase Register & GSTR-2B files.</div>
 
     <div class="kpis">
       <div class="card">
@@ -106,9 +136,28 @@
       <div class="card detail-box">
         <h2 style="font-size: 15px; margin-bottom: 6px;">Evidence & Statutory Citation Inspector</h2>
         <div id="inspectorContent">
-          <p style="color:#94a3b8;">Select any finding row after running a live audit pass to inspect proofs, statutory sections, and sign off.</p>
+          <p style="color:#94a3b8;">Select any finding row after running an audit pass to inspect proofs, statutory sections, and sign off.</p>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size: 15px; margin-bottom: 10px;">Session Audit Run Log</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Source</th>
+            <th>Entity</th>
+            <th>Cutoff</th>
+            <th>Flags</th>
+            <th>Exposure</th>
+          </tr>
+        </thead>
+        <tbody id="runHistoryBody">
+          <tr><td colspan="6" style="color:#94a3b8;">No runs recorded in this session yet.</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -116,11 +165,18 @@
     const API_BASE_URL = "https://veritax-audit-workspacenew.onrender.com";
     let findings = [];
     let selectedId = null;
-    let summary = { total_rows_scanned: 0, anomalies_flagged: 0, total_exposure_inr: 0 };
+    let summary = { total_rows_scanned: 0, anomalies_flagged: 0, total_exposure_inr: 0, cutoff_date: "2026-03-31" };
     let activeEntity = { entity_name: "Deccan Precision Components Pvt Ltd", gstin: "36AAACD1234F1Z5", fy: "FY 2025-26" };
+    let runHistory = [];
 
     function formatINR(num) {
       return "₹" + Number(num || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+    }
+
+    function setBanner(msg, isError = false) {
+      const banner = document.getElementById("statusBanner");
+      banner.textContent = msg;
+      banner.className = isError ? "status-bar error-text" : "status-bar";
     }
 
     function updateEntityHeader() {
@@ -139,7 +195,7 @@
     function renderTable() {
       const tbody = document.getElementById("findingsBody");
       if (!findings.length) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color:#94a3b8;">No findings available.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#94a3b8;">No anomalies flagged for this run.</td></tr>';
         return;
       }
       tbody.innerHTML = findings.map(f => `
@@ -152,15 +208,48 @@
       `).join("");
     }
 
+    function renderRunHistory() {
+      const tbody = document.getElementById("runHistoryBody");
+      if (!runHistory.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:#94a3b8;">No runs recorded in this session yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = runHistory.map(r => `
+        <tr>
+          <td>${r.time}</td>
+          <td>${r.source}</td>
+          <td>${r.entity}</td>
+          <td>${r.cutoff}</td>
+          <td>${r.flags}</td>
+          <td><strong>${formatINR(r.exposure)}</strong></td>
+        </tr>
+      `).join("");
+    }
+
+    function recordRun(sourceLabel) {
+      runHistory.unshift({
+        time: new Date().toLocaleTimeString(),
+        source: sourceLabel,
+        entity: activeEntity.entity_name,
+        cutoff: summary.cutoff_date || document.getElementById("cutoffDateInput").value || "2026-03-31",
+        flags: summary.anomalies_flagged ?? findings.length,
+        exposure: summary.total_exposure_inr ?? 0
+      });
+      renderRunHistory();
+    }
+
     function selectFinding(id) {
       selectedId = id;
       renderTable();
       const f = findings.find(item => item.finding_id === id);
       const box = document.getElementById("inspectorContent");
-      if (!f) return;
+      if (!f) {
+        box.innerHTML = '<p style="color:#94a3b8;">Select any finding row to inspect details.</p>';
+        return;
+      }
 
       box.innerHTML = `
-        <div class="meta">${f.finding_id} • ${f.category} • GSTIN: ${f.vendor_gstin}</div>
+        <div class="meta">${f.finding_id} • ${f.category} • GSTIN: ${f.vendor_gstin} • Engine: ${f.source_mode || "DETERMINISTIC_STATUTE"}</div>
         <p><strong>Vendor & Invoice:</strong> ${f.vendor_name} (${f.invoice_no}, ${f.invoice_date})</p>
         <p><strong>Exposure Amount:</strong> ${formatINR(f.exposure_inr)}</p>
         <p><strong>Deterministic Proof:</strong> ${f.deterministic_proof}</p>
@@ -187,49 +276,93 @@
       selectFinding(id);
     }
 
+    function applyAuditPayload(data, sourceLabel) {
+      activeEntity = data.entity_profile || activeEntity;
+      summary = data.audit_summary || {};
+      findings = (data.findings || []).map(item => ({ ...item, reviewer_note: item.reviewer_note || "" }));
+      selectedId = findings.length > 0 ? findings[0].finding_id : null;
+      updateEntityHeader();
+      updateKPIs();
+      renderTable();
+      selectFinding(selectedId);
+      recordRun(sourceLabel);
+      setBanner(`Loaded ${findings.length} findings for ${activeEntity.entity_name} (Exposure: ${formatINR(summary.total_exposure_inr)}).`, false);
+    }
+
     async function runLiveAuditPass() {
       const btn = document.getElementById("runLiveAuditBtn");
-      const banner = document.getElementById("statusBanner");
       const profile = document.getElementById("profileSelect").value;
       btn.disabled = true;
       btn.textContent = "Running Live Engine...";
-      banner.textContent = `Calling ${API_BASE_URL}/api/v1/audit/demo?profile=${encodeURIComponent(profile)} ...`;
+      setBanner(`Running demo profile '${profile}' against ${API_BASE_URL}...`, false);
 
       try {
         const res = await fetch(`${API_BASE_URL}/api/v1/audit/demo?profile=${encodeURIComponent(profile)}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        activeEntity = data.entity_profile || activeEntity;
-        summary = data.audit_summary || {};
-        findings = (data.findings || []).map(item => ({ ...item, reviewer_note: item.reviewer_note || "" }));
-        updateEntityHeader();
-        updateKPIs();
-        renderTable();
-        if (findings.length > 0) selectFinding(findings[0].finding_id);
-        banner.textContent = `Loaded ${findings.length} findings for ${activeEntity.entity_name} (Exposure: ${formatINR(summary.total_exposure_inr)}).`;
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        applyAuditPayload(data, `Demo (${profile})`);
       } catch (err) {
-        banner.textContent = `Connection error: ${err.message}. Check that Uvicorn is running on port 8000 and this page is open at http://127.0.0.1:5500/audit_workspace.html.`;
+        setBanner(`Audit error: ${err.message}`, true);
       } finally {
         btn.disabled = false;
         btn.textContent = "Run Live AI Audit Pass";
       }
     }
 
+    async function runUploadedFilesAudit() {
+      const prInput = document.getElementById("prFileInput");
+      const g2bInput = document.getElementById("gstr2bFileInput");
+      const cutoff = document.getElementById("cutoffDateInput").value || "2026-03-31";
+      const customEntity = document.getElementById("customEntityInput").value.trim() || "Uploaded Entity Ledger";
+
+      if (!prInput.files.length || !g2bInput.files.length) {
+        setBanner("Please select both a Purchase Register file and a GSTR-2B file before running file audit.", true);
+        return;
+      }
+
+      const btn = document.getElementById("runUploadAuditBtn");
+      btn.disabled = true;
+      btn.textContent = "Validating & Auditing...";
+      setBanner("Uploading files and running deterministic + statutory audit checks...", false);
+
+      try {
+        const formData = new FormData();
+        formData.append("purchase_register", prInput.files[0]);
+        formData.append("gstr_2b", g2bInput.files[0]);
+        formData.append("cutoff_date", cutoff);
+        formData.append("entity_name", customEntity);
+
+        const res = await fetch(`${API_BASE_URL}/api/v1/audit/run`, {
+          method: "POST",
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        applyAuditPayload(data, "File Upload");
+      } catch (err) {
+        setBanner(`Upload audit failed: ${err.message}`, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Run Uploaded Files Audit";
+      }
+    }
+
     function exportCSV() {
       if (!findings.length) {
-        alert("Run a live audit pass first so there are findings to export.");
+        alert("Run an audit pass first so there are findings to export.");
         return;
       }
       const headers = [
-        "entity_name", "entity_gstin", "finding_id", "severity", "category",
-        "vendor_name", "vendor_gstin", "invoice_no", "invoice_date", "exposure_inr",
-        "statutory_citation", "recommended_action", "status", "reviewer_note"
+        "entity_name", "entity_gstin", "cutoff_date", "finding_id", "severity",
+        "category", "vendor_name", "vendor_gstin", "invoice_no", "invoice_date",
+        "exposure_inr", "statutory_citation", "recommended_action", "status", "reviewer_note"
       ];
       const rows = findings.map(f => {
         const enriched = {
           ...f,
           entity_name: activeEntity.entity_name,
-          entity_gstin: activeEntity.gstin
+          entity_gstin: activeEntity.gstin,
+          cutoff_date: summary.cutoff_date || "2026-03-31"
         };
         return headers.map(h => `"${String(enriched[h] ?? "").replace(/"/g, '""')}"`).join(",");
       });
@@ -245,14 +378,9 @@
 
     document.getElementById("profileSelect").addEventListener("change", runLiveAuditPass);
     document.getElementById("runLiveAuditBtn").addEventListener("click", runLiveAuditPass);
+    document.getElementById("runUploadAuditBtn").addEventListener("click", runUploadedFilesAudit);
     document.getElementById("exportCsvBtn").addEventListener("click", exportCSV);
     updateEntityHeader();
   </script>
 </body>
 </html>
-
-
-
-
-
-

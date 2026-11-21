@@ -1,14 +1,15 @@
 import io
 import traceback
+from typing import List, Literal, Tuple
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from audit_engine import run_deterministic_checks, enrich_with_gemini_citations
 
 app = FastAPI(
     title="VeriTax AI Auditor Engine",
     description="Deterministic Indian GST & Statutory Audit Backend powered by Google Gemini",
-    version="1.1.0"
+    version="1.2.0"
 )
 
 app.add_middleware(
@@ -125,39 +126,112 @@ DEMO_PROFILES = {
     }
 }
 
+REQUIRED_PR_COLS = ["invoice_no", "invoice_date", "vendor_name", "vendor_gstin", "itc_claimed"]
+REQUIRED_2B_COLS = ["invoice_no", "vendor_gstin", "itc_available_2b"]
+
+
+def parse_tabular_upload(filename: str, raw_bytes: bytes, label: str) -> pd.DataFrame:
+    if not raw_bytes:
+        raise ValueError(f"{label} file '{filename}' is empty.")
+
+    lower_name = (filename or "").lower()
+    if lower_name.endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(raw_bytes))
+    elif lower_name.endswith(".xlsx") or lower_name.endswith(".xls"):
+        xls = pd.ExcelFile(io.BytesIO(raw_bytes))
+        df = pd.read_excel(xls, sheet_name=0)
+    else:
+        raise ValueError(f"{label} file '{filename}' must be a .csv, .xlsx, or .xls file.")
+
+    if df.empty:
+        raise ValueError(f"{label} file '{filename}' contains zero data rows.")
+
+    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+    return df
+
+
+def validate_and_normalize_frames(pr_df: pd.DataFrame, g2b_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    missing_pr = [c for c in REQUIRED_PR_COLS if c not in pr_df.columns]
+    if missing_pr:
+        raise ValueError(f"Purchase Register missing required columns: {', '.join(missing_pr)}")
+
+    missing_2b = [c for c in REQUIRED_2B_COLS if c not in g2b_df.columns]
+    if missing_2b:
+        raise ValueError(f"GSTR-2B missing required columns: {', '.join(missing_2b)}")
+
+    pr_df = pr_df.copy()
+    g2b_df = g2b_df.copy()
+
+    pr_df["itc_claimed"] = pd.to_numeric(pr_df["itc_claimed"], errors="coerce").fillna(0.0)
+    if "taxable_value" in pr_df.columns:
+        pr_df["taxable_value"] = pd.to_numeric(pr_df["taxable_value"], errors="coerce").fillna(0.0)
+    else:
+        pr_df["taxable_value"] = 0.0
+
+    if "description" not in pr_df.columns:
+        pr_df["description"] = ""
+    if "is_msme_udyam" not in pr_df.columns:
+        pr_df["is_msme_udyam"] = False
+    if "payment_date" not in pr_df.columns:
+        pr_df["payment_date"] = ""
+
+    parsed_dates = pd.to_datetime(pr_df["invoice_date"], errors="coerce")
+    if parsed_dates.isna().any():
+        bad_rows = parsed_dates[parsed_dates.isna()].index.tolist()
+        raise ValueError(f"Purchase Register has invalid invoice_date values at row(s): {bad_rows}")
+    pr_df["invoice_date"] = parsed_dates.dt.strftime("%Y-%m-%d")
+
+    g2b_df["itc_available_2b"] = pd.to_numeric(g2b_df["itc_available_2b"], errors="coerce").fillna(0.0)
+    if "vendor_filing_status" not in g2b_df.columns:
+        g2b_df["vendor_filing_status"] = "REFLECTED_IN_2B"
+
+    return pr_df, g2b_df
+
 
 @app.get("/")
 def health_check():
-    return {"status": "online", "engine": "VeriTax Deterministic + Gemini 3.8 Flash"}
+    return {"status": "online", "engine": "VeriTax Deterministic + Gemini 3.8 Flash", "version": "1.2.0"}
 
 
 @app.post("/api/v1/audit/run")
 async def execute_audit(
     purchase_register: UploadFile = File(...),
     gstr_2b: UploadFile = File(...),
-    cutoff_date: str = "2026-03-31"
+    cutoff_date: str = Form("2026-03-31"),
+    entity_name: str = Form("Uploaded Entity Ledger"),
+    gstin: str = Form("N/A")
 ):
     try:
         pr_bytes = await purchase_register.read()
         g2b_bytes = await gstr_2b.read()
 
-        pr_df = pd.read_csv(io.BytesIO(pr_bytes))
-        g2b_df = pd.read_csv(io.BytesIO(g2b_bytes))
+        raw_pr = parse_tabular_upload(purchase_register.filename or "purchase_register.csv", pr_bytes, "Purchase Register")
+        raw_2b = parse_tabular_upload(gstr_2b.filename or "gstr_2b.csv", g2b_bytes, "GSTR-2B")
+
+        pr_df, g2b_df = validate_and_normalize_frames(raw_pr, raw_2b)
 
         raw_anomalies = run_deterministic_checks(pr_df, g2b_df, audit_cutoff_date=cutoff_date)
         final_findings = enrich_with_gemini_citations(raw_anomalies)
-        total_exposure = sum(f.exposure_inr for f in final_findings)
+        total_exposure = round(sum(f.exposure_inr for f in final_findings), 2)
 
         return {
+            "entity_profile": {
+                "profile_key": "custom_upload",
+                "entity_name": entity_name.strip() or "Uploaded Entity Ledger",
+                "gstin": gstin.strip().upper() or "N/A",
+                "fy": "Custom Upload"
+            },
             "audit_summary": {
                 "total_rows_scanned": len(pr_df),
                 "anomalies_flagged": len(final_findings),
-                "total_exposure_inr": round(total_exposure, 2),
+                "total_exposure_inr": total_exposure,
                 "cutoff_date": cutoff_date
             },
             "findings": [f.model_dump() for f in final_findings]
         }
 
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=f"Audit pipeline failed: {str(e)}")
@@ -184,7 +258,8 @@ def run_demo_audit(profile: str = "deccan"):
             "audit_summary": {
                 "total_rows_scanned": len(sample_pr),
                 "anomalies_flagged": len(final_findings),
-                "total_exposure_inr": sum(f.exposure_inr for f in final_findings),
+                "total_exposure_inr": round(sum(f.exposure_inr for f in final_findings), 2),
+                "cutoff_date": "2026-03-31"
             },
             "findings": [f.model_dump() for f in final_findings]
         }
